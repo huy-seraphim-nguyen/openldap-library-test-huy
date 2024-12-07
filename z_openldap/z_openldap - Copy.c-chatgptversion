@@ -1,0 +1,207 @@
+/* z_openldap.cpp : This file contains the 'main' function. Program execution begins and ends there.
+
+This program uses OpenLdap lib on Windows, not WinLdap lib.
+- OpenLdap lib uses Openssl
+- WinLdap lib does not use Openssl
+
+
+*/
+
+//#include "ssl_private.h"
+//#include "IsaProtectedParam.h"
+
+/*
+#ifdef WIN32
+#include <stdio.h>
+#include <stdlib.h>
+#include <windows.h>
+#include <winldap.h>  //include wincrypt.h ==> define X509_NAME (((LPCSTR) 7))
+//#include <Winber.h>
+//#include <time.h> // for struct timeval definition 
+#undef X509_NAME    //this one cause problem. It comes from wincrypt.h, conflict with openssl
+#else
+#include <ldap.h>
+#include <lber.h>
+#include <unistd.h>
+#include <pthread.h>
+#endif
+*/
+
+//#undef X509_NAME    //this one cause problem. It comes from wincrypt.h, conflict with openssl
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <ldap.h>
+#include <lber.h>
+
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/engine.h>
+#include <openssl/pem.h>
+#include <openssl/ossl_typ.h>
+
+
+ 
+//=====================================
+ 
+static int ldap_version = LDAP_VERSION3;
+
+// Apache Directory Studio
+char ldap_host[32] = "localhost"; //char ldap_host[32] = sso dev pki 10.63.1.35
+static char *ldap_user = "cn=huy,l=isabelbeta,c=be"; 
+static char *ldap_psw  = "huy";
+
+int p_ldap(char *ldap_host, int ldap_port);
+
+
+/********************************************************************************************/
+/********************************************************************************************/
+int p_ldap(char *ldap_host, int ldap_port)
+{
+   int ret = 0;
+   long lv = 0;
+   
+   LDAP *pLdap = NULL;
+   LDAPURLDesc url;
+   char* ldapuri = NULL;
+   memset(&url, 0, sizeof(url));
+
+   printf("Connect with NO SSL \n");
+
+   /* ldap_open deprecated
+   pLdap = ldap_open(ldap_host, ldap_port);
+   if (pLdap == NULL) {
+      printf("FAILED ldap_sslinit LDAP %s:%d \n", ldap_host, ldap_port);
+      return LDAP_CONNECT_ERROR;
+   }
+   //*/
+
+   /*
+   if (use_ssl) {
+      url.lud_scheme = "ldaps";
+      rc = ldap_set_option(NULL, LDAP_OPT_X_TLS_CACERTFILE, cafile);
+      if (rc != LDAP_OPT_SUCCESS) {
+         conn = NULL;
+         return 0;
+      }
+   }
+   else {
+      url.lud_scheme = "ldap";
+   }
+   */
+
+   /*
+   url.lud_scheme = malloc (sizeof "ldap" + 1);
+   strcpy (url.lud_scheme, "ldap");
+   */
+   url.lud_scheme = "ldap";
+   url.lud_host = ldap_host;
+   url.lud_port = ldap_port;
+   url.lud_scope = LDAP_SCOPE_DEFAULT;
+   ldapuri = (char *)ldap_url_desc2str(&url);
+   ret = ldap_initialize(&pLdap, ldapuri);
+   if (ret) {
+      printf("FAILED ldap_initialize : %s:%d \n", ldap_host, ldap_port);
+      printf("FAILED ldap_initialize : %s \n", ldapuri);
+      return ret;
+   }
+
+   if ((ret = ldap_set_option(pLdap, LDAP_OPT_PROTOCOL_VERSION, &ldap_version))) {
+      printf("FAILED ldap_set_option LDAP_OPT_PROTOCOL_VERSION");
+      return ret;
+   }
+
+   //ret = ldap_set_option(NULL, LDAP_OPT_X_TLS_CACERTFILE, cafile);
+   if (ret != LDAP_OPT_SUCCESS) {
+      printf("FAILED ldap_set_option LDAP_OPT_X_TLS_CACERTFILE");
+      return ret;
+   }
+
+   if ((ret = ldap_simple_bind_s(pLdap, ldap_user, ldap_psw))) {
+      printf("FAILED ldap_simple_bind_s : %s:%d   %s \n", ldap_host, ldap_port, ldapuri);
+      return ret;
+   }
+
+   //*ld = pLdap;
+   return ret;
+}
+/********************************************************************************************/
+static int p_ldapTLS(char *ldap_host, int ldap_port)
+{
+   LDAP *pLdap = NULL;
+   LDAPURLDesc url;
+   char* ldapuri = "ldaps://localhost:10636";
+
+   int ret = 0;
+   long lv = 0;
+
+   memset(&url, 0, sizeof(url));
+
+
+   printf("Connect over TLS \n");
+   url.lud_scheme = "ldaps";
+   //url.lud_scheme = "ldap";
+   url.lud_host = ldap_host;
+   url.lud_port = ldap_port;
+   //url.lud_scope = LDAP_SCOPE_DEFAULT;
+   //ldapuri = (char *)ldap_url_desc2str(&url);
+
+   ret = ldap_initialize(&pLdap, ldapuri);
+   if (ret) {
+      printf("FAILED ldap_initialize : %s:%d \n", ldap_host, ldap_port);
+      printf("FAILED ldap_initialize : %s \n", ldapuri);
+      return ret;
+   }
+
+   if ((ret = ldap_set_option(pLdap, LDAP_OPT_PROTOCOL_VERSION, &ldap_version))) {
+      printf("FAILED ldap_set_option LDAP_OPT_PROTOCOL_VERSION \n");
+      return ret;
+   }
+
+   ret = ldap_set_option(pLdap, LDAP_OPT_X_TLS_REQUIRE_CERT, LDAP_OPT_X_TLS_NEVER);
+   if (ret != LDAP_SUCCESS) {
+      printf("FAILED ldap_set_option LDAP_OPT_X_TLS_NEVER : %s \n", ldap_err2string(ret));
+      return ret;
+   }
+
+
+   if ((ret = ldap_start_tls_s(pLdap, NULL, NULL))) {
+      printf("FAILED ldap_start_tls_s \n");
+      return ret;
+   }
+
+
+
+   if ((ret = ldap_simple_bind_s(pLdap, ldap_user, ldap_psw))) {
+      printf("FAILED ldap_simple_bind_s : %s:%d   %s \n", ldap_host, ldap_port, ldapuri);
+      ldap_unbind_ext_s(pLdap, NULL, NULL);
+      return ret;
+   }
+
+   //*ld = pLdap;
+   return ret;
+}
+
+/********************************************************************************************/
+void main(int argc, char **argv)
+{
+   int ret = 0;
+   int ldap_port = 10636;     //389 or 636
+   int ldap_type = 1;         //0 or 1
+
+   printf("ldap_host : %s:%d   %d \n", ldap_host, ldap_port, ldap_type);
+   printf("Enter ldap type (0=NO SSL,  1=SSL) : ");
+   //scanf_s("%d", &ldap_type);
+   //ldap_type = 1; //TLS
+   if (ldap_type) {
+      ret = p_ldapTLS(ldap_host, ldap_port);
+   }
+   else {
+      ret = p_ldap(ldap_host, ldap_port);
+   }
+   printf("Main return : %d \n", ret);
+
+   return;
+}
+
+/********************************************************************************************/
